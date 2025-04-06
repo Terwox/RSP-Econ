@@ -12,7 +12,7 @@ p_load(countrycode)
 p_load(comtradr)
 
 #set comtrade api key
-set_primary_comtrade_key("44c61dfe675f4f8fb1975004bad7cdac")
+set_primary_comtrade_key("44c61dfe675f4f8fb1975004bad7cdac") # GASP (it's a free API key I don't care)
 
 ref_gsheet_url<-"https://docs.google.com/spreadsheets/d/1AbPFX21KKfiCr8WWA6fwfPVKAjE5MUCzdWVitV0ZuWM/edit?usp=sharing"
  
