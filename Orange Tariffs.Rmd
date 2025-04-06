@@ -1,0 +1,129 @@
+---
+title: "Orange Tariffs"
+output: html_notebook
+---
+
+```{r}
+library(pacman)
+#load packages
+library(googlesheets4)
+library(tidyverse)
+p_load(countrycode)
+p_load(comtradr)
+
+#set comtrade api key
+set_primary_comtrade_key("44c61dfe675f4f8fb1975004bad7cdac")
+
+ref_gsheet_url<-"https://docs.google.com/spreadsheets/d/1AbPFX21KKfiCr8WWA6fwfPVKAjE5MUCzdWVitV0ZuWM/edit?usp=sharing"
+ 
+#read data from google sheet 
+dta_us_tariffs<-read_sheet(ref_gsheet_url)
+ 
+#add countrycodes
+dta_us_tariffs<-  dta_us_tariffs |> 
+  mutate(iso3c= countrycode(sourcevar=country, origin="country.name", destination="iso3c"))
+ 
+#assign _KS as as code for Kosovo as per Comtrade country code list (KSV is also used by some providers)
+dta_us_tariffs[dta_us_tariffs$country=="Kosovo","iso3c"]<-"_KS"
+ 
+#create reference list of focus countries
+ref_focus_countries<-dta_us_tariffs$iso3c 
+ 
+# get bilateral trade data for US 
+dta_comtrade <- ct_get_data(
+  reporter = 'USA',
+  partner=dta_us_tariffs$iso3c,
+  commodity_code = 'TOTAL',
+  start_date = 2024,
+  end_date = 2024,
+  flow_direction = c('import','export')
+)
+ 
+# select focus variables and round to billion USD
+dta_comtrade<-dta_comtrade |> 
+  select(ref_year,partner_iso,flow_desc,fobvalue) |> 
+  mutate(fobvalue= fobvalue/10^9) 
+ 
+# Pivot dataframe by flow type
+dta_comtrade<-dta_comtrade |> 
+  pivot_wider(names_from=flow_desc, values_from = fobvalue)
+ 
+#calculate trade balance
+dta_comtrade<-dta_comtrade |> 
+  mutate(trade_bal= Export- Import, 
+         trade_bal_to_m_ratio= round(trade_bal/Import,2)*100)
+ 
+#join comtrade data with tariff listing
+dta_us_tariffs_and_trade_flows<-left_join(dta_us_tariffs,dta_comtrade, by=c('iso3c'="partner_iso"))
+```
+```{r}
+#create filtered dataframe where tariff > standard rate
+#drop EU countries as individual reciprocal tariffs weren't published 
+dta_plt_us_tariffs<- dta_us_tariffs_and_trade_flows |>
+  filter(us_tariffs_applied >10,
+         EU == "N")
+
+#plot where tariff != reciprocal tariff
+plt_us_tariffs<-ggplot(data=dta_plt_us_tariffs,
+                       aes(y=us_tariffs_applied,
+             x=trade_bal_to_m_ratio))+
+  geom_text(aes(label =country), size=2)+
+  theme_minimal()+
+  labs(x= "Imports / Trade Balance (%)",
+       y="Announced 'Reciprocal' Tariff")
+
+plt_us_tariffs
+```
+
+```{r}
+p_load(ggrepel)
+
+#create filtered dataframe where tariff > standard rate
+#drop EU countries as individual reciprocal tariffs weren't published 
+dta_plt_us_tariffs<- dta_us_tariffs_and_trade_flows |>
+  filter(us_tariffs_applied >10,  
+         EU == "N") 
+
+#plot where tariff != reciprocal tariff
+plt_us_tariffs<-ggplot(data=dta_plt_us_tariffs,
+                       aes(y=us_tariffs_applied,
+             x=trade_bal_to_m_ratio))+
+  geom_text_repel(aes(label =country), size=2)+
+  geom_smooth(method = "lm", se = TRUE, color = "blue", linewidth = 0.8) +
+  theme_minimal()+
+  labs(x= "Imports / Trade Balance (%)",
+       y="Announced 'Reciprocal' Tariff")
+
+plt_us_tariffs
+```
+
+```{r}
+p_load(ggrepel)
+
+#create filtered dataframe where tariff > standard rate
+#drop EU countries as individual reciprocal tariffs weren't published 
+dta_plt_us_tariffs<- dta_us_tariffs_and_trade_flows |>
+  filter(us_tariffs_applied >10,  
+         EU == "N") 
+
+# plot with thin dashed regression line
+plt_us_tariffs <- ggplot(data = dta_plt_us_tariffs,
+                         aes(y = us_tariffs_applied,
+                             x = trade_bal_to_m_ratio)) +
+
+  geom_smooth(method = "lm", se = FALSE, color = "blue", linewidth = 0.2, linetype = "dashed") +
+    geom_text_repel(aes(label = country), size = 2, min.segment.length = 0) +
+  theme_minimal() +
+  labs(x = "Imports / Trade Balance (%)",
+       y = "Announced 'Reciprocal' Tariff",
+       title = "Relationship between Trade Balance and Reciprocal Tariffs")
+
+plt_us_tariffs
+
+# save plot as 1080p resolution PNG
+ggsave("plt_us_tariffs_1080p.png",
+       plot = plt_us_tariffs,
+       width = 1920, height = 1080, units = "px", dpi = 300, bg = "white")
+
+```
+
